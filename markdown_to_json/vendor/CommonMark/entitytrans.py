@@ -2304,32 +2304,29 @@ _invalid_codepoints = set([
 
 def _replace_charref(s):
     s = s.group(1)
-    if s[0] == '#':
-        # numeric charref
-        if s[1] in 'xX':
-            num = int(s[2:].rstrip(';'), 16)
-        else:
-            num = int(s[1:].rstrip(';'))
-        if num in _invalid_charrefs:
-            return _invalid_charrefs[num]
-        if 0xD800 <= num <= 0xDFFF or num > 0x10FFFF:
-            return u'\uFFFD'
-        if num in _invalid_codepoints:
-            return ''
-        if sys.version_info >= (3, 0):
-        	return chr(num)
-        else:
-        	return unichr(num)
-    else:
+    if s[0] != '#':
         # named charref
-        if s in _html5:
-            return _html5[s]
-        # find the longest matching name (as defined by the standard)
-        for x in range(len(s)-1, 1, -1):
-            if s[:x] in _html5:
-                return _html5[s[:x]] + s[x:]
-        else:
-            return '&' + s
+        return (
+            _html5[s]
+            if s in _html5
+            else next(
+                (
+                    _html5[s[:x]] + s[x:]
+                    for x in range(len(s) - 1, 1, -1)
+                    if s[:x] in _html5
+                ),
+                f'&{s}',
+            )
+        )
+        # numeric charref
+    num = int(s[2:].rstrip(';'), 16) if s[1] in 'xX' else int(s[1:].rstrip(';'))
+    if num in _invalid_charrefs:
+        return _invalid_charrefs[num]
+    if 0xD800 <= num <= 0xDFFF or num > 0x10FFFF:
+        return u'\uFFFD'
+    if num in _invalid_codepoints:
+        return ''
+    return chr(num) if sys.version_info >= (3, 0) else unichr(num)
 
 
 _charref = _re.compile(r'&(#[0-9]+;?'
@@ -2344,6 +2341,4 @@ def _unescape(s):
     for both valid and invalid character references, and the list of
     HTML 5 named character references defined in html.entities.html5.
     """
-    if '&' not in s:
-        return s
-    return _charref.sub(_replace_charref, s)
+    return s if '&' not in s else _charref.sub(_replace_charref, s)

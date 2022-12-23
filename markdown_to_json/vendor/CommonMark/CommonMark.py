@@ -35,7 +35,7 @@ else:
 
 ESCAPABLE = '[!"#$%&\'()*+,./:;<=>?@[\\\\\\]^_`{|}~-]'
 ESCAPED_CHAR = '\\\\' + ESCAPABLE
-IN_DOUBLE_QUOTES = '"(' + ESCAPED_CHAR + '|[^"\\x00])*"'
+IN_DOUBLE_QUOTES = f'"({ESCAPED_CHAR}' + '|[^"\\x00])*"'
 IN_SINGLE_QUOTES = '\'(' + ESCAPED_CHAR + '|[^\'\\x00])*\''
 IN_PARENS = '\\((' + ESCAPED_CHAR + '|[^)\\x00])*\\)'
 REG_CHAR = '[^\\\\()\\x00-\\x20]'
@@ -46,32 +46,45 @@ ATTRIBUTENAME = '[a-zA-Z_:][a-zA-Z0-9:._-]*'
 UNQUOTEDVALUE = "[^\"'=<>`\\x00-\\x20]+"
 SINGLEQUOTEDVALUE = "'[^']*'"
 DOUBLEQUOTEDVALUE = '"[^"]*"'
-ATTRIBUTEVALUE = "(?:" + UNQUOTEDVALUE + "|" + \
-    SINGLEQUOTEDVALUE + "|" + DOUBLEQUOTEDVALUE + ")"
+ATTRIBUTEVALUE = f"(?:{UNQUOTEDVALUE}|{SINGLEQUOTEDVALUE}|{DOUBLEQUOTEDVALUE})"
 ATTRIBUTEVALUESPEC = "(?:" + "\\s*=" + "\\s*" + ATTRIBUTEVALUE + ")"
 ATTRIBUTE = "(?:" + "\\s+" + ATTRIBUTENAME + ATTRIBUTEVALUESPEC + "?)"
-OPENTAG = "<" + TAGNAME + ATTRIBUTE + "*" + "\\s*/?>"
-CLOSETAG = "</" + TAGNAME + "\\s*[>]"
-OPENBLOCKTAG = "<" + BLOCKTAGNAME + ATTRIBUTE + "*" + "\\s*/?>"
-CLOSEBLOCKTAG = "</" + BLOCKTAGNAME + "\\s*[>]"
+OPENTAG = f"<{TAGNAME}{ATTRIBUTE}*" + "\\s*/?>"
+CLOSETAG = f"</{TAGNAME}" + "\\s*[>]"
+OPENBLOCKTAG = f"<{BLOCKTAGNAME}{ATTRIBUTE}*" + "\\s*/?>"
+CLOSEBLOCKTAG = f"</{BLOCKTAGNAME}" + "\\s*[>]"
 HTMLCOMMENT = "<!--([^-]+|[-][^-]+)*-->"
 PROCESSINGINSTRUCTION = "[<][?].*?[?][>]"
 DECLARATION = "<![A-Z]+" + "\\s+[^>]*>"
 CDATA = "<!\\[CDATA\\[([^\\]]+|\\][^\\]]|\\]\\][^>])*\\]\\]>"
-HTMLTAG = "(?:" + OPENTAG + "|" + CLOSETAG + "|" + HTMLCOMMENT + \
-    "|" + PROCESSINGINSTRUCTION + "|" + DECLARATION + "|" + CDATA + ")"
-HTMLBLOCKOPEN = "<(?:" + BLOCKTAGNAME + \
-    "[\\s/>]" + "|" + "/" + \
-    BLOCKTAGNAME + "[\\s>]" + "|" + "[?!])"
+HTMLTAG = f"(?:{OPENTAG}|{CLOSETAG}|{HTMLCOMMENT}|{PROCESSINGINSTRUCTION}|{DECLARATION}|{CDATA})"
+HTMLBLOCKOPEN = (
+    (
+        ((((f"<(?:{BLOCKTAGNAME}" + "[\\s/>]") + "|") + "/") + BLOCKTAGNAME)
+        + "[\\s>]"
+    )
+    + "|"
+) + "[?!])"
 
-reHtmlTag = re.compile('^' + HTMLTAG, re.IGNORECASE)
-reHtmlBlockOpen = re.compile('^' + HTMLBLOCKOPEN, re.IGNORECASE)
+reHtmlTag = re.compile(f'^{HTMLTAG}', re.IGNORECASE)
+reHtmlBlockOpen = re.compile(f'^{HTMLBLOCKOPEN}', re.IGNORECASE)
 reLinkTitle = re.compile(
-    '^(?:"(' + ESCAPED_CHAR + '|[^"\\x00])*"' + '|' + '\'(' + ESCAPED_CHAR + '|[^\'\\x00])*\'' + '|' + '\\((' + ESCAPED_CHAR + '|[^)\\x00])*\\))')
+    f'^(?:"({ESCAPED_CHAR}'
+    + '|[^"\\x00])*"'
+    + '|'
+    + '\'('
+    + ESCAPED_CHAR
+    + '|[^\'\\x00])*\''
+    + '|'
+    + '\\(('
+    + ESCAPED_CHAR
+    + '|[^)\\x00])*\\))'
+)
 reLinkDestinationBraces = re.compile(
     '^(?:[<](?:[^<>\\n\\\\\\x00]' + '|' + ESCAPED_CHAR + '|' + '\\\\)*[>])')
 reLinkDestination = re.compile(
-    '^(?:' + REG_CHAR + '+|' + ESCAPED_CHAR + '|' + IN_PARENS_NOSP + ')*')
+    f'^(?:{REG_CHAR}+|{ESCAPED_CHAR}|{IN_PARENS_NOSP})*'
+)
 reEscapable = re.compile(ESCAPABLE)
 reAllEscapedChar = '\\\\(' + ESCAPABLE + ')'
 reEscapedChar = re.compile('^\\\\(' + ESCAPABLE + ')')
@@ -90,14 +103,18 @@ def ASTtoJSON(block):
         """ Strips circular 'parent' references and trims empty block elements."""
         if block.parent:
             block.parent = None
-        if not block.__dict__['isOpen'] is None:
+        if block.__dict__['isOpen'] is not None:
             block.__dict__['open'] = block.isOpen
             del(block.isOpen)
         # trim empty elements...
         for attr in dir(block):
-            if not callable(attr) and not attr.startswith("__") and not attr == "makeBlock":
-                if block.__dict__[attr] in ["", [], None, {}]:
-                    del(block.__dict__[attr])
+            if (
+                not callable(attr)
+                and not attr.startswith("__")
+                and attr != "makeBlock"
+                and block.__dict__[attr] in ["", [], None, {}]
+            ):
+                del(block.__dict__[attr])
         if 'children' in block.__dict__ and len(block.children) > 0:
             for i, child in enumerate(block.children):
                 block.children[i] = prepare(child)
@@ -111,17 +128,18 @@ def ASTtoJSON(block):
             for i, child in enumerate(block.c):
                 block.c[i] = prepare(child)
         return block
+
     return json.dumps(prepare(block), default=lambda o: o.__dict__) # sort_keys=True) # indent=4)
 
 def dumpAST(obj, ind=0):
     """ Print out a block/entire AST."""
     indChar = ("\t" * ind) + "-> " if ind else ""
-    print(indChar + "[" + obj.t + "]")
-    if not obj.title == "":
+    print(f"{indChar}[{obj.t}]")
+    if obj.title != "":
         print("\t" + indChar + "Title: " + obj.title)
-    if not obj.info == "":
+    if obj.info != "":
         print("\t" + indChar + "Info: " + obj.info)
-    if not obj.destination == "":
+    if obj.destination != "":
         print("\t" + indChar + "Destination: " + obj.destination)
     if obj.isOpen:
         print("\t" + indChar + "Open: " + str(obj.isOpen))
@@ -134,9 +152,9 @@ def dumpAST(obj, ind=0):
         print("\t" + indChar + "Start Column: " + str(obj.start_column))
     if obj.end_line:
         print("\t" + indChar + "End line: " + str(obj.end_line))
-    if not obj.string_content == "":
+    if obj.string_content != "":
         print("\t" + indChar + "String content: " + obj.string_content)
-    if not obj.info == "":
+    if obj.info != "":
         print("\t" + indChar + "Info: " + obj.info)
     if len(obj.strings) > 0:
         print("\t" + indChar + "Strings: ['" + "', '".join(obj.strings) + "'']")
@@ -196,9 +214,8 @@ def normalizeReference(s):
 def matchAt(pattern, s, offset):
     """ Attempt to match a regex in string s at offset offset.
     Return index of match or None."""
-    matched = re.search(pattern, s[offset:])
-    if matched:
-        return offset + s[offset:].index(matched.group(0))
+    if matched := re.search(pattern, s[offset:]):
+        return offset + s[offset:].index(matched[0])
     else:
         return None
 
@@ -207,14 +224,14 @@ def detabLine(text):
     """ Convert tabs to spaces on each line using a 4-space tab stop."""
     if re.match('\t', text) and text.index('\t') == -1:
         return text
-    else:
-        def tabber(m):
-            result = "    "[(m.end() - 1 - tabber.lastStop) % 4:]
-            tabber.lastStop = m.end()
-            return result
-        tabber.lastStop = 0
-        text = re.sub("\t", tabber, text)
-        return text
+    def tabber(m):
+        result = "    "[(m.end() - 1 - tabber.lastStop) % 4:]
+        tabber.lastStop = m.end()
+        return result
+
+    tabber.lastStop = 0
+    text = re.sub("\t", tabber, text)
+    return text
 
 
 class Block(object):
@@ -263,9 +280,9 @@ class InlineParser(object):
     def match(self, regexString, reCompileFlags=0):
         """ If re matches at current position in the subject, advance
         position in subject and return the match; otherwise return null."""
-        match = re.search(
-            regexString, self.subject[self.pos:], flags=reCompileFlags)
-        if match:
+        if match := re.search(
+            regexString, self.subject[self.pos :], flags=reCompileFlags
+        ):
             self.pos += match.end(0)
             return match.group()
         else:
@@ -299,7 +316,7 @@ class InlineParser(object):
         afterOpenTicks = self.pos
         foundCode = False
         match = self.match(r"`+", re.MULTILINE)
-        while (not foundCode) and (not match is None):
+        while not foundCode and match is not None:
             if (match == ticks):
                 c = self.subject[afterOpenTicks:(self.pos - len(ticks))]
                 c = re.sub(r"[ \n]+", ' ', c)
@@ -343,7 +360,12 @@ class InlineParser(object):
             # email
             dest = m[1:-1]
             inlines.append(
-                Block(t="Link", label=[Block(t="Str", c=dest)], destination="mailto:" + dest))
+                Block(
+                    t="Link",
+                    label=[Block(t="Str", c=dest)],
+                    destination=f"mailto:{dest}",
+                )
+            )
             return len(m)
         elif m2:
             # link
@@ -356,8 +378,7 @@ class InlineParser(object):
 
     def parseHtmlTag(self, inlines):
         """ Attempt to parse a raw HTML tag."""
-        m = self.match(reHtmlTag)
-        if (m):
+        if m := self.match(reHtmlTag):
             inlines.append(Block(t="Html", c=m))
             return len(m)
         else:
@@ -380,7 +401,7 @@ class InlineParser(object):
             self.pos += 1
 
         a = self.peek()
-        char_after = a if a else "\\n"
+        char_after = a or "\\n"
 
         can_open = (numdelims > 0) and (
             numdelims <= 3) and (not re.match("\s", char_after))
@@ -405,7 +426,7 @@ class InlineParser(object):
         startpos = self.pos
         first_close = 0
         nxt = self.peek()
-        if ((nxt == "*") or (nxt == "_")):
+        if nxt in ["*", "_"]:
             c = nxt
         else:
             return 0
@@ -427,14 +448,14 @@ class InlineParser(object):
         first_close_delims = 0
 
         if (numdelims == 1):
-            while (True):
+            while True:
                 res = self.scanDelims(c)
                 if (res["numdelims"] >= 1 and res["can_close"]):
                     self.pos += 1
                     inlines[delimpos].t = "Emph"
                     inlines[delimpos].c = inlines[delimpos + 1:]
                     if len(inlines) > 1:
-                        for x in range(delimpos + 1, len(inlines)):
+                        for _ in range(delimpos + 1, len(inlines)):
                             inlines.pop(len(inlines) - 1)
                     break
                 else:
@@ -442,14 +463,14 @@ class InlineParser(object):
                         break
             return (self.pos - startpos)
         elif (numdelims == 2):
-            while (True):
+            while True:
                 res = self.scanDelims(c)
                 if (res["numdelims"] >= 2 and res["can_close"]):
                     self.pos += 2
                     inlines[delimpos].t = "Strong"
                     inlines[delimpos].c = inlines[delimpos + 1:]
                     if len(inlines) > 1:
-                        for x in range(delimpos + 1, len(inlines)):
+                        for _ in range(delimpos + 1, len(inlines)):
                             inlines.pop(len(inlines) - 1)
                     break
                 else:
@@ -457,25 +478,29 @@ class InlineParser(object):
                         break
             return (self.pos - startpos)
         elif (numdelims == 3):
-            while (True):
+            while True:
                 res = self.scanDelims(c)
-                if (res["numdelims"] >= 1 and res["numdelims"] <= 3 and res["can_close"] and not res["numdelims"] == first_close_delims):
+                if (
+                    res["numdelims"] >= 1
+                    and res["numdelims"] <= 3
+                    and res["can_close"]
+                    and res["numdelims"] != first_close_delims
+                ):
                     if first_close_delims == 1 and numdelims > 2:
                         res["numdelims"] = 2
-                    elif first_close_delims == 2:
-                        res['numdelims'] = 1
-                    elif res['numdelims'] == 3:
+                    elif first_close_delims == 2 or res['numdelims'] == 3:
                         res['numdelims'] = 1
                     self.pos += res['numdelims']
 
                     if first_close > 0:
-                        inlines[
-                            delimpos].t = "Strong" if first_close_delims == 1 else "Emph"
+                        inlines[delimpos].t = (
+                            "Strong" if first_close_delims == 1 else "Emph"
+                        )
                         temp = "Emph" if first_close_delims == 1 else "Strong"
                         inlines[delimpos].c = [Block(t=temp, c=inlines[delimpos + 1:first_close])] + inlines[
                             first_close + 1:]  # error on 362?
                         if len(inlines) > 1:
-                            for x in range(delimpos + 1, len(inlines)):
+                            for _ in range(delimpos + 1, len(inlines)):
                                 inlines.pop(len(inlines) - 1)
                         break
                     else:
@@ -483,9 +508,8 @@ class InlineParser(object):
                             Block(t="Str", c=self.subject[self.pos - res["numdelims"]:self.pos]))
                         first_close = len(inlines) - 1
                         first_close_delims = res["numdelims"]
-                else:
-                    if self.parseInline(inlines) == 0:
-                        break
+                elif self.parseInline(inlines) == 0:
+                    break
             return (self.pos - startpos)
         else:
             return res
@@ -495,28 +519,20 @@ class InlineParser(object):
     def parseLinkTitle(self):
         """ Attempt to parse link title (sans quotes), returning the string
         or null if no match."""
-        title = self.match(reLinkTitle)
-        if title:
-            return unescape(title[1:len(title)-1])
-        else:
-            return None
+        return unescape(title[1:-1]) if (title := self.match(reLinkTitle)) else None
 
     def parseLinkDestination(self):
         """ Attempt to parse link destination, returning the string or
         null if no match."""
         res = self.match(reLinkDestinationBraces)
-        if not res is None:
-            return unescape(res[1:len(res) - 1])
-        else:
-            res2 = self.match(reLinkDestination)
-            if not res2 is None:
-                return unescape(res2)
-            else:
-                return None
+        if res is not None:
+            return unescape(res[1:-1])
+        res2 = self.match(reLinkDestination)
+        return unescape(res2) if res2 is not None else None
 
     def parseLinkLabel(self):
         """ Attempt to parse a link label, returning number of characters parsed."""
-        if not self.peek() == "[":
+        if self.peek() != "[":
             return 0
         startpos = self.pos
         nest_level = 0
@@ -525,7 +541,7 @@ class InlineParser(object):
             return 0
         self.pos += 1
         c = self.peek()
-        while ((not c == "]") or (nest_level > 0)) and not c is None:
+        while (c != "]" or nest_level > 0) and c is not None:
             if c == "`":
                 self.parseBackticks([])
             elif c == "<":
@@ -573,7 +589,7 @@ class InlineParser(object):
             self.pos += 1
             if self.spnl():
                 dest = self.parseLinkDestination()
-                if not dest is None and self.spnl():
+                if dest is not None and self.spnl():
                     if re.match(r"^\s", self.subject[self.pos - 1]):
                         title = self.parseLinkTitle()
                     else:
@@ -608,14 +624,8 @@ class InlineParser(object):
         else:
             link = None
         if link:
-            if link.get("title", None):
-                title = link['title']
-            else:
-                title = ""
-            if link.get("destination", None):
-                destination = link['destination']
-            else:
-                destination = ""
+            title = link['title'] if link.get("title", None) else ""
+            destination = link['destination'] if link.get("destination", None) else ""
             inlines.append(
                 Block(t="Link", destination=destination, title=title, label=self.parseRawLabel(rawlabel)))
             return self.pos - startpos
@@ -627,9 +637,10 @@ class InlineParser(object):
 
     def parseEntity(self, inlines):
         """ Attempt to parse an entity, adding to inlines if successful."""
-        m = self.match(
-            r"^&(?:#x[a-f0-9]{1,8}|#[0-9]{1,8}|[a-z][a-z0-9]{1,31});", re.IGNORECASE)
-        if m:
+        if m := self.match(
+            r"^&(?:#x[a-f0-9]{1,8}|#[0-9]{1,8}|[a-z][a-z0-9]{1,31});",
+            re.IGNORECASE,
+        ):
             inlines.append(Block(t="Entity", c=m))
             return len(m)
         else:
@@ -638,8 +649,7 @@ class InlineParser(object):
     def parseString(self, inlines):
         """ Parse a run of ordinary characters, or a single character with
         a special meaning in markdown, as a plain string, adding to inlines."""
-        m = self.match(reMain, re.MULTILINE)
-        if m:
+        if m := self.match(reMain, re.MULTILINE):
             inlines.append(Block(t="Str", c=m))
             return len(m)
         else:
@@ -648,19 +658,18 @@ class InlineParser(object):
     def parseNewline(self, inlines):
         """ Parse a newline.  If it was preceded by two spaces, return a hard
         line break; otherwise a soft line break."""
-        if (self.peek() == '\n'):
-            self.pos += 1
-            last = inlines[len(inlines) - 1]
-            if last and last.t == "Str" and last.c[-2:] == "  ":
-                last.c = re.sub(r' *$', '', last.c)
-                inlines.append(Block(t="Hardbreak"))
-            else:
-                if last and last.t == "Str" and last.c[-1:] == " ":
-                    last.c = last.c[0:-1]
-                inlines.append(Block(t="Softbreak"))
-            return 1
-        else:
+        if self.peek() != '\n':
             return 0
+        self.pos += 1
+        last = inlines[len(inlines) - 1]
+        if last and last.t == "Str" and last.c[-2:] == "  ":
+            last.c = re.sub(r' *$', '', last.c)
+            inlines.append(Block(t="Hardbreak"))
+        else:
+            if last and last.t == "Str" and last.c[-1:] == " ":
+                last.c = last.c[:-1]
+            inlines.append(Block(t="Softbreak"))
+        return 1
 
     def parseImage(self, inlines):
         """ Attempt to parse an image.  If the opening '!' is not followed
@@ -734,7 +743,7 @@ class InlineParser(object):
             res = self.parseEscaped(inlines)
         elif (c == "`"):
             res = self.parseBackticks(inlines)
-        elif ((c == "*") or (c == "_")):
+        elif c in ["*", "_"]:
             res = self.parseEmphasis(inlines)
         elif (c == "["):
             res = self.parseLink(inlines)
@@ -773,14 +782,14 @@ class DocParser:
 
     def acceptsLines(self, block_type):
         """ Returns true if block type can accept lines of text."""
-        return block_type == "Paragraph" or block_type == "IndentedCode" or block_type == "FencedCode"
+        return block_type in ["Paragraph", "IndentedCode", "FencedCode"]
 
     def endsWithBlankLine(self, block):
         """ Returns true if block ends with a blank line, descending if needed
         into lists and sublists."""
         if block.last_line_blank:
             return True
-        if (block.t == "List" or block.t == "ListItem") and len(block.children) > 0:
+        if block.t in ["List", "ListItem"] and len(block.children) > 0:
             return self.endsWithBlankLine(block.children[len(block.children) - 1])
         else:
             return False
@@ -799,8 +808,8 @@ class DocParser:
             if not b:
                 break
 
-        if (last_list):
-            while (not block == last_list):
+        if last_list:
+            while block != last_list:
                 self.finalize(block, line_number)
                 block = block.parent
             self.finalize(last_list, line_number)
@@ -811,15 +820,19 @@ class DocParser:
         can accept lines -- that check should be done before calling this."""
         s = ln[offset:]
         if not self.tip.isOpen:
-            raise Exception(
-                "Attempted to add line (" + ln + ") to closed container.")
+            raise Exception(f"Attempted to add line ({ln}) to closed container.")
         self.tip.strings.append(s)
 
     def addChild(self, tag, line_number, offset):
         """ Add block of type tag as a child of the tip.  If the tip can't
         accept children, close and finalize it and try its parent,
         and so on til we find a block that can accept children."""
-        while not (self.tip.t == "Document" or self.tip.t == "BlockQuote" or self.tip.t == "ListItem" or (self.tip.t == "List" and tag == "ListItem")):
+        while (
+            self.tip.t != "Document"
+            and self.tip.t != "BlockQuote"
+            and self.tip.t != "ListItem"
+            and (self.tip.t != "List" or tag != "ListItem")
+        ):
             self.finalize(self.tip, line_number)
         column_number = offset + 1
         newBlock = Block.makeBlock(tag, line_number, column_number)
@@ -847,29 +860,27 @@ class DocParser:
         match = re.search(r'^[*+-]( +|$)', rest)
         match2 = re.search(r'^(\d+)([.)])( +|$)', rest)
         if match:
-            spaces_after_marker = len(match.group(1))
+            spaces_after_marker = len(match[1])
             data['type'] = 'Bullet'
-            data['bullet_char'] = match.group(0)[0]
-            blank_item = match.group(0) == len(rest)
+            data['bullet_char'] = match[0][0]
+            blank_item = match[0] == len(rest)
         elif match2:
-            spaces_after_marker = len(match2.group(3))
+            spaces_after_marker = len(match2[3])
             data['type'] = 'Ordered'
-            data['start'] = int(match2.group(1))
-            data['delimiter'] = match2.group(2)
-            blank_item = match2.group(0) == len(rest)
+            data['start'] = int(match2[1])
+            data['delimiter'] = match2[2]
+            blank_item = match2[0] == len(rest)
         else:
             return None
         if spaces_after_marker >= 5 or spaces_after_marker < 1 or blank_item:
             if match:
-                data['padding'] = len(match.group(0)) - spaces_after_marker + 1
+                data['padding'] = len(match[0]) - spaces_after_marker + 1
             elif match2:
-                data['padding'] = len(
-                    match2.group(0)) - spaces_after_marker + 1
-        else:
-            if match:
-                data['padding'] = len(match.group(0))
-            elif match2:
-                data['padding'] = len(match2.group(0))
+                data['padding'] = ((len(match2[0]) - spaces_after_marker) + 1)
+        elif match:
+            data['padding'] = len(match[0])
+        elif match2:
+            data['padding'] = len(match2[0])
         return data
 
     def incorporateLine(self, ln, line_number):
