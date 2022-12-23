@@ -43,9 +43,8 @@ def writable_io_or_stdout(filename):
         return
     else:
         try:
-            f = open(filename, 'w')
-            yield f
-            f.close()
+            with open(filename, 'w') as f:
+                yield f
         except:
             logging.error("Error: Can't open {0} for writing".format(
                 filename))

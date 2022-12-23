@@ -73,7 +73,7 @@ class CMarkASTNester(object):
 
     def _ensure_list_singleton(self, blocks):
         lists = [e for e in blocks if e.t == 'List']
-        if len(blocks) > 1 and len(lists) > 0:
+        if len(blocks) > 1 and lists:
             l = lists[0]
             raise ContentError(
                 "Error at line {0}: Can't mix lists and other content".format(
@@ -107,12 +107,9 @@ class Renderer(object):
         super(Renderer, self).__init__()
 
     def stringify_dict(self, d):
-        out = OrderedDict(
-            [
-                (self._render_block(k), self._valuify(v))
-                for k, v in d.items()
-            ])
-        return out
+        return OrderedDict(
+            [(self._render_block(k), self._valuify(v)) for k, v in d.items()]
+        )
 
     def _valuify(self, cm_vals):
         if hasattr(cm_vals, 'items'):
